@@ -5,7 +5,7 @@ import tensorflow_datasets as tfds
 from tensorflow import keras
 
 print("Loading model...")
-model = keras.models.load_model("mnist_autoencoder_denoiser_model.keras")
+model = keras.models.load_model("mnist_autoencoder_model.keras")
 print("✓ Model loaded\n")
 
 # Load test data
@@ -93,12 +93,12 @@ if conv_before_bottleneck_idx is not None:
     print(f"Number of filters: {num_filters}")
 
     # Gradient ascent parameters
-    num_filters_to_viz = min(16, num_filters)
+    num_filters_to_viz = num_filters  # Visualize ALL filters
     img_size = 28
     iterations = 100
     step_size = 1.0
 
-    print(f"Visualizing {num_filters_to_viz} filters using gradient ascent...")
+    print(f"Visualizing all {num_filters_to_viz} filters using gradient ascent...")
     print(f"Iterations: {iterations}, Step size: {step_size}\n")
 
     effective_filters = []
@@ -200,22 +200,41 @@ print("=" * 70)
 test_reconstruction = model.predict(test_image, verbose=0)
 test_bottleneck = bottleneck_model.predict(test_image, verbose=0)
 
-# Create figure with multiple subplots
-fig = plt.figure(figsize=(20, 16))
-gs = fig.add_gridspec(5, 8, hspace=0.5, wspace=0.3, height_ratios=[1, 1, 1.5, 0.8, 0.8])
-
-# Row 1-2: Effective Filters (if available) - 8 per row, 2 rows = 16 filters
+# Calculate dynamic grid layout for filters
 if effective_filters is not None:
-    for i in range(min(16, len(effective_filters))):
-        row = i // 8  # 0 for first 8 filters, 1 for next 8
+    num_filter_images = len(effective_filters)
+    filters_per_row = 8
+    filter_rows = int(np.ceil(num_filter_images / filters_per_row))
+else:
+    filter_rows = 0
+
+# Create figure with multiple subplots
+# Dynamic height based on number of filter rows
+base_height = 12  # Height for non-filter rows
+filter_height = filter_rows * 2.5  # Height per filter row
+total_height = base_height + filter_height
+
+fig = plt.figure(figsize=(20, total_height))
+
+# Dynamic grid with filter rows + 3 analysis rows
+total_rows = filter_rows + 3
+height_ratios = [1] * filter_rows + [1.5, 0.8, 0.8]  # Filter rows + analysis rows
+gs = fig.add_gridspec(
+    total_rows, 8, hspace=0.5, wspace=0.3, height_ratios=height_ratios
+)
+
+# Rows 1 to filter_rows: Effective Filters (if available) - 8 per row
+if effective_filters is not None:
+    for i in range(num_filter_images):
+        row = i // 8  # Dynamic row calculation
         col = i % 8  # 0-7 for column position
         ax = fig.add_subplot(gs[row, col])
         ax.imshow(effective_filters[i].squeeze(), cmap="viridis")
         ax.axis("off")
         ax.set_title(f"Filter {i}", fontsize=9)
 
-# Row 3: Heatmap of average bottleneck activations per digit
-ax_heatmap = fig.add_subplot(gs[2, :])
+# Row filter_rows: Heatmap of average bottleneck activations per digit
+ax_heatmap = fig.add_subplot(gs[filter_rows, :])
 bottleneck_dim = len(avg_bottlenecks[0])
 heatmap_data = np.array([avg_bottlenecks[i] for i in range(num_classes)])
 
@@ -236,8 +255,8 @@ ax_heatmap.set_xticks(np.arange(bottleneck_dim) - 0.5, minor=True)
 ax_heatmap.set_yticks(np.arange(num_classes) - 0.5, minor=True)
 ax_heatmap.grid(which="minor", color="gray", linestyle="-", linewidth=0.5, alpha=0.3)
 
-# Row 4: Top activating neurons per digit
-ax_top_neurons = fig.add_subplot(gs[3, :4])
+# Row filter_rows+1: Top activating neurons per digit
+ax_top_neurons = fig.add_subplot(gs[filter_rows + 1, :4])
 # For each digit, find top 3 most active neurons
 top_neurons_per_digit = {}
 for digit in range(num_classes):
@@ -265,8 +284,8 @@ ax_top_neurons.spines["top"].set_visible(False)
 ax_top_neurons.spines["right"].set_visible(False)
 ax_top_neurons.spines["bottom"].set_visible(False)
 
-# Row 5: Specialization analysis (moved to row 4 above, this is duplicate - remove)
-ax_specialization = fig.add_subplot(gs[4, :])
+# Row filter_rows+2: Specialization analysis
+ax_specialization = fig.add_subplot(gs[filter_rows + 2, :])
 # For each neuron, find which digit activates it most
 neuron_specialization = np.argmax(heatmap_data, axis=0)
 specialization_counts = np.bincount(neuron_specialization, minlength=num_classes)

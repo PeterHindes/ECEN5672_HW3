@@ -22,46 +22,59 @@ current_variant_values = np.array([0.2, 0.2, 0.2, 0.2, 0.2])  # Equal distributi
 
 # Create figure and layout
 fig = plt.figure(figsize=(14, 8))
-gs = fig.add_gridspec(3, 2, height_ratios=[2, 0.3, 0.3], hspace=0.4, wspace=0.4)
 
-# Image display (top)
-ax_image = fig.add_subplot(gs[0, :])
-ax_image.set_title("Generated Digit", fontsize=16, fontweight="bold")
+# Title at top
+fig.text(
+    0.5,
+    0.95,
+    "Interactive Digit Generator",
+    ha="center",
+    fontsize=18,
+    fontweight="bold",
+)
+
+# Image display (top center)
+ax_image = plt.axes([0.35, 0.45, 0.35, 0.45])
+ax_image.set_title("Generated Digit", fontsize=14, fontweight="bold")
 ax_image.axis("off")
 
-# Radio buttons for digit selection (bottom left)
-ax_radio = fig.add_subplot(gs[1:, 0])
-ax_radio.set_title("Select Digit (0-9)", fontsize=12, fontweight="bold")
+# Radio buttons for digit selection (left side)
+ax_radio = plt.axes([0.05, 0.30, 0.15, 0.55])
+ax_radio.set_title("Select Digit", fontsize=12, fontweight="bold")
 radio = RadioButtons(
     ax_radio,
     labels=["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"],
     active=0,
 )
 
-# Sliders for variant probabilities (bottom right)
-ax_sliders = fig.add_subplot(gs[1:, 1])
-ax_sliders.axis("off")
+# Title for sliders
+fig.text(
+    0.65,
+    0.38,
+    "Style Controls (V0-V4)",
+    ha="center",
+    fontsize=11,
+    fontweight="bold",
+)
 
-# Create 5 slider axes
-slider_axes = []
+# Create 5 slider axes (right side, vertically stacked)
 sliders = []
-slider_height = 0.08
-slider_spacing = 0.12
-slider_bottom_start = 0.25
+slider_height = 0.03
+slider_width = 0.25
 
 for i in range(5):
-    ax_slider = plt.axes(
-        [0.60, slider_bottom_start + i * slider_spacing, 0.30, slider_height]
-    )
+    left = 0.52
+    bottom = 0.30 - i * 0.06
+
+    ax_slider = plt.axes([left, bottom, slider_width, slider_height])
     slider = Slider(
         ax_slider,
-        f"Variant {i}",
+        f"V{i}",
         0.0,
         1.0,
         valinit=current_variant_values[i],
         valstep=0.01,
     )
-    slider_axes.append(ax_slider)
     sliders.append(slider)
 
 
@@ -125,9 +138,26 @@ def on_radio_change(label):
 def on_slider_change(val):
     """Handle slider changes"""
     global current_variant_values
-    for i, slider in enumerate(sliders):
-        current_variant_values[i] = slider.val
+    for i in range(5):
+        current_variant_values[i] = sliders[i].val
     update_display()
+
+
+def reset_style():
+    """Reset all variant sliders to equal values"""
+    global current_variant_values
+    current_variant_values = np.array([0.2, 0.2, 0.2, 0.2, 0.2])
+    for i in range(5):
+        sliders[i].set_val(0.2)
+
+
+def randomize_style():
+    """Randomize all variant sliders"""
+    global current_variant_values
+    current_variant_values = np.random.dirichlet(np.ones(5)).astype(np.float32)
+    for i in range(5):
+        sliders[i].set_val(current_variant_values[i])
+    update_display()  # Explicitly update after all sliders are set
 
 
 # Connect callbacks
@@ -135,43 +165,25 @@ radio.on_clicked(on_radio_change)
 for slider in sliders:
     slider.on_changed(on_slider_change)
 
-# Add instructions
-instructions_text = (
-    "Interactive Digit Generator\n\n"
-    "Controls:\n"
-    "• Select digit using radio buttons (left)\n"
-    "• Adjust variant sliders (right) to change style\n"
-    "• Variant values are auto-normalized to sum to 1.0\n"
-    "• Dominant variant shown in purple\n\n"
-    "The model generates images using ONLY:\n"
-    "  - Which digit (0-9)\n"
-    "  - Variant distribution (5 values)"
-)
+# Add control buttons
+from matplotlib.widgets import Button
 
-fig.text(
-    0.5,
-    0.02,
-    instructions_text,
-    ha="center",
-    fontsize=10,
-    bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.3),
-)
+ax_reset = plt.axes([0.30, 0.02, 0.12, 0.04])
+btn_reset = Button(ax_reset, "Reset Style", color="lightcoral", hovercolor="coral")
+btn_reset.on_clicked(lambda event: reset_style())
+
+ax_random = plt.axes([0.52, 0.02, 0.12, 0.04])
+btn_random = Button(ax_random, "Random Style", color="lightgreen", hovercolor="green")
+btn_random.on_clicked(lambda event: randomize_style())
 
 # Initial display
 update_display()
 
 print("\n" + "=" * 70)
-print("Interactive Generator Ready!")
+print("Interactive Digit Generator Ready!")
 print("=" * 70)
-print("\nInstructions:")
-print("  1. Click radio buttons to select which digit (0-9)")
-print("  2. Adjust sliders to control the 5 variant probabilities")
-print("  3. The image updates in real-time!")
-print("\nExperiment:")
-print("  - Try different variant combinations for the same digit")
-print("  - See how variants affect writing style")
-print("  - Notice which variants have the strongest effect")
-print("\nClose the window to exit.")
+print("Controls: Select digit (left), adjust 5 style sliders (V0-V4)")
+print("Use Reset/Random buttons to control style")
 print("=" * 70)
 
 plt.show()
