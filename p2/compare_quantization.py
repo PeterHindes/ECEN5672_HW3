@@ -5,9 +5,9 @@ import tensorflow_datasets as tfds
 from tensorflow import keras
 
 print("Loading models...")
-print("  - Model A (clean-trained with unique noise)...")
-model_a = keras.models.load_model("mnist_autoencoder_model.keras")
-print("  - Model C (noise-trained with cached noise)...")
+print("  - Model A (clean-trained, NO noise)...")
+model_a = keras.models.load_model("mnist_autoencoder_clean_model.keras")
+print("  - Model C (denoiser, trained WITH noise)...")
 model_c = keras.models.load_model("mnist_autoencoder_denoiser_model.keras")
 print("✓ Models loaded successfully!\n")
 

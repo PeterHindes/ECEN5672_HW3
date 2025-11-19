@@ -6,9 +6,9 @@ from tensorflow import keras
 
 print("Loading models...")
 print("  - Model A (clean-trained, NO noise)...")
-model_a = keras.models.load_model("p2/mnist_autoencoder_clean_model.keras")
+model_a = keras.models.load_model("mnist_autoencoder_clean_model.keras")
 print("  - Model C (denoiser, trained WITH noise)...")
-model_c = keras.models.load_model("p2/mnist_autoencoder_denoiser_model.keras")
+model_c = keras.models.load_model("mnist_autoencoder_denoiser_model.keras")
 print("✓ Models loaded successfully!\n")
 
 # Load test data

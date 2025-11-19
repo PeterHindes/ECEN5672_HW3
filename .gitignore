@@ -15,16 +15,6 @@ __pycache__/
 # Jupyter Notebook
 .ipynb_checkpoints
 
-# Generated images and outputs
-*.png
-*.jpg
-*.jpeg
-*.gif
-*.bmp
-*.tiff
-!img/*.jpg
-!img/*.png
-
 # Keras models
 *.keras
 *.h5
