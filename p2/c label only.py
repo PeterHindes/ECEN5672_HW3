@@ -28,18 +28,21 @@ x = layers.Dense(128)(x)
 x = layers.LeakyReLU(alpha=0.2)(x)
 x = layers.Dropout(0.3)(x)
 
-# Split into two bottlenecks: digit identity (10) and variant/style (5)
+# Split into two bottlenecks:
+# 1. Digit identity (10) - supervised with real labels
+# 2. Style encoding (5) - unsupervised, no labels needed
 digit_bottleneck = layers.Dense(10, activation="softmax", name="digit_classification")(
     x
 )
-variant_bottleneck = layers.Dense(
-    5, activation="softmax", name="variant_classification"
-)(x)
 
-# Concatenate the two bottlenecks for reconstruction
+# Unsupervised style encoding - no labels, learns from reconstruction only
+style_bottleneck = layers.Dense(5, activation="tanh", name="style_encoding")(x)
+
+# Concatenate for reconstruction
 # Total: 10 + 5 = 15 dimensional bottleneck
+# Note: No stop_gradient needed since style is unsupervised (no conflicting losses)
 combined_bottleneck = layers.Concatenate(name="combined_bottleneck")(
-    [digit_bottleneck, variant_bottleneck]
+    [digit_bottleneck, style_bottleneck]
 )
 
 # Decoder - reconstructs from the combined bottleneck
@@ -59,10 +62,10 @@ reconstructed_output = layers.Conv2D(
     1, (3, 3), padding="same", activation="sigmoid", name="reconstructed_image"
 )(x)
 
-# Create the model with three outputs: reconstruction, digit, and variant
+# Create the model with two outputs: reconstruction and digit classification
 model = keras.Model(
     inputs=input_img,
-    outputs=[reconstructed_output, digit_bottleneck, variant_bottleneck],
+    outputs=[reconstructed_output, digit_bottleneck],
 )
 
 
@@ -76,7 +79,7 @@ model = keras.Model(
 )
 
 
-# Preprocess: add noise and create variant labels
+# Preprocess: add noise
 def normalize_img(data):
     image = tf.cast(data["image"], tf.float32) / 255.0
     label = data["label"]
@@ -85,15 +88,9 @@ def normalize_img(data):
     noise = tf.random.normal(shape=tf.shape(image), mean=0.0, stddev=0.3)
     noisy_image = image + noise
 
-    # Create variant label (0-4) based on image index hash
-    # This creates pseudo-variants for different writing styles
-    # In practice, you might use actual style information if available
-    variant_label = tf.cast(tf.reduce_sum(image) * 1000, tf.int32) % 5
-
     return noisy_image, {
         "reconstructed_image": image,
         "digit_classification": label,
-        "variant_classification": variant_label,
     }
 
 
@@ -109,24 +106,21 @@ ds_test = ds_test.cache()
 ds_test = ds_test.prefetch(tf.data.AUTOTUNE)
 
 # Compile the model
-# The digit and variant classifications drive the bottleneck
-# Reconstruction must work from only these two categorical representations
+# Digit classification uses real labels (supervised)
+# Style encoding learns unsupervised from reconstruction only
 model.compile(
     optimizer="adam",
     loss={
         "reconstructed_image": "mse",
         "digit_classification": "sparse_categorical_crossentropy",
-        "variant_classification": "sparse_categorical_crossentropy",
     },
     loss_weights={
-        "reconstructed_image": 0.7,  # Still important for quality
-        "digit_classification": 0.2,  # Force digit encoding
-        "variant_classification": 0.1,  # Force style/variant encoding
+        "reconstructed_image": 0.7,  # Important for quality
+        "digit_classification": 0.3,  # Force digit encoding (real labels)
     },
     metrics={
         "reconstructed_image": ["mae", "mse"],
         "digit_classification": "accuracy",
-        "variant_classification": "accuracy",
     },
     jit_compile=True,
 )
@@ -137,7 +131,7 @@ model.summary()
 # Train the model
 history = model.fit(
     ds_train,
-    epochs=25,
+    epochs=16,
     validation_data=ds_test,
 )
 
@@ -149,11 +143,9 @@ results = model.evaluate(ds_test, verbose=1)
 print(f"\nTotal Test Loss: {results[0]:.6f}")
 print(f"Reconstruction Test Loss (MSE): {results[1]:.6f}")
 print(f"Digit Classification Test Loss: {results[2]:.6f}")
-print(f"Variant Classification Test Loss: {results[3]:.6f}")
-print(f"Reconstruction Test MAE: {results[4]:.6f}")
-print(f"Reconstruction Test MSE: {results[5]:.6f}")
-print(f"Digit Classification Test Accuracy: {results[6]:.6f}")
-print(f"Variant Classification Test Accuracy: {results[7]:.6f}")
+print(f"Reconstruction Test MAE: {results[3]:.6f}")
+print(f"Reconstruction Test MSE: {results[4]:.6f}")
+print(f"Digit Classification Test Accuracy: {results[5]:.6f}")
 
 
 model.save("mnist_autoencoder_label_only.keras")
@@ -162,13 +154,14 @@ print("\n✓ Full model saved to: mnist_autoencoder_label_only.keras")
 print("\n" + "=" * 70)
 print("Model Architecture Explanation:")
 print("=" * 70)
-print("This model explicitly separates digit identity from style/variant:")
+print("This model explicitly separates digit identity from style:")
 print("  - Digit bottleneck: 10 values (one-hot, which digit 0-9)")
-print("  - Variant bottleneck: 5 values (one-hot, which style variant)")
-print("  - Decoder must reconstruct ONLY from these 15 categorical values")
+print("  - Style bottleneck: 5 continuous values (learned unsupervised)")
+print("  - Decoder must reconstruct from digit (categorical) + style (continuous)")
 print("\nThis forces the model to:")
-print("  1. Encode 'WHAT' digit it is (0-9)")
-print("  2. Encode 'HOW' it's written (5 style variants)")
+print("  1. Encode 'WHAT' digit it is (0-9) - SUPERVISED")
+print("  2. Encode 'HOW' it's written (5-dim style) - UNSUPERVISED")
 print("  3. Reconstruct the entire image from just these two pieces")
 print("\nResult: Explicit disentanglement of content vs. style!")
+print("Note: Style is learned purely from reconstruction (no labels needed)")
 print("=" * 70)

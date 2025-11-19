@@ -44,16 +44,13 @@ try:
         noisy_image = clean_image + noise
 
         print("Generating denoised reconstruction and predictions...")
-        denoised_image, digit_probs, variant_probs = model.predict(
-            noisy_image, verbose=0
-        )
+        # Model now has only 2 outputs: reconstruction and digit classification
+        denoised_image, digit_probs = model.predict(noisy_image, verbose=0)
 
         predicted_digit = np.argmax(digit_probs[0])
-        predicted_variant = np.argmax(variant_probs[0])
 
         # Get confidence scores
         digit_confidence = digit_probs[0][predicted_digit]
-        variant_confidence = variant_probs[0][predicted_variant]
 
         # Calculate reconstruction error (comparing to clean image)
         mse = np.mean((clean_image.numpy() - denoised_image) ** 2)
@@ -74,9 +71,6 @@ try:
         print(
             f"  Correct:          {'✓' if true_label.numpy() == predicted_digit else '✗'}"
         )
-        print(f"\nVariant Classification:")
-        print(f"  Predicted Variant: {predicted_variant}")
-        print(f"  Confidence:        {variant_confidence:.2%}")
 
         # Display top 3 digit probabilities
         print(f"\nTop 3 Digit Predictions:")
@@ -88,9 +82,9 @@ try:
 
         # Create 2-row visualization
         # Top row: Clean | Noisy | Denoised
-        # Bottom row: Digit Probabilities | Variant Probabilities
+        # Bottom row: Digit Probabilities (full width)
         fig = plt.figure(figsize=(18, 10))
-        gs = fig.add_gridspec(2, 3, height_ratios=[1.2, 1], hspace=0.3, wspace=0.3)
+        gs = fig.add_gridspec(2, 3, height_ratios=[1.2, 1], hspace=0.3)
 
         # Top Row - Images
         # Panel 1: Clean Original
@@ -122,8 +116,8 @@ try:
         ax2.axis("off")
 
         # Bottom Row - Probability Distributions
-        # Digit probabilities (left side of bottom row)
-        digit_subplot = fig.add_subplot(gs[1, 0:2])
+        # Digit probabilities (full width)
+        digit_subplot = fig.add_subplot(gs[1, :])
         digit_bars = digit_subplot.bar(
             range(10), digit_probs[0], color="steelblue", alpha=0.7
         )
@@ -143,24 +137,6 @@ try:
         digit_subplot.set_ylim([0, 1])
         digit_subplot.grid(axis="y", alpha=0.3)
 
-        # Variant probabilities (right side of bottom row)
-        variant_subplot = fig.add_subplot(gs[1, 2])
-        variant_bars = variant_subplot.bar(
-            range(5), variant_probs[0], color="coral", alpha=0.7
-        )
-        variant_bars[predicted_variant].set_color("darkviolet")
-        variant_bars[predicted_variant].set_alpha(1.0)
-        variant_subplot.set_xlabel("Variant", fontsize=11)
-        variant_subplot.set_ylabel("Probability", fontsize=11)
-        variant_subplot.set_title(
-            f"Variant Probabilities\n(Predicted: {predicted_variant}, Confidence: {variant_confidence:.1%})",
-            fontsize=12,
-            fontweight="bold",
-        )
-        variant_subplot.set_xticks(range(5))
-        variant_subplot.set_ylim([0, 1])
-        variant_subplot.grid(axis="y", alpha=0.3)
-
         improvement = (noise_mse - mse) / noise_mse * 100
         correct_prediction = (
             "✓ Correct" if true_label.numpy() == predicted_digit else "✗ Incorrect"
@@ -169,7 +145,7 @@ try:
         plt.suptitle(
             f"Label-Only Denoising Autoencoder ({correct_prediction})\n"
             f"Noise Reduction: {improvement:.2f}% | "
-            f"Bottleneck: Digit={predicted_digit} (conf: {digit_confidence:.1%}), Variant={predicted_variant} (conf: {variant_confidence:.1%})",
+            f"Bottleneck: Digit={predicted_digit} (conf: {digit_confidence:.1%}) + 5-dim unsupervised style encoding",
             fontsize=16,
             fontweight="bold",
         )

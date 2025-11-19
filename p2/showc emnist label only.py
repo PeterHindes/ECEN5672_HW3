@@ -110,7 +110,8 @@ try:
         # Top Row - Images
         # Panel 1: Clean Original
         ax0 = fig.add_subplot(gs[0, 0])
-        ax0.imshow(clean_image[0].numpy().squeeze(), cmap="gray")
+        # Transpose for correct display (EMNIST images are stored rotated)
+        ax0.imshow(clean_image[0].numpy().squeeze().T, cmap="gray")
         ax0.set_title(
             f"Clean Original\n(True: '{true_char}' label {true_label})",
             fontsize=14,
@@ -120,7 +121,8 @@ try:
 
         # Panel 2: Noisy Input
         ax1 = fig.add_subplot(gs[0, 1])
-        ax1.imshow(noisy_image[0].numpy().squeeze(), cmap="gray")
+        # Transpose for correct display (EMNIST images are stored rotated)
+        ax1.imshow(noisy_image[0].numpy().squeeze().T, cmap="gray")
         ax1.set_title(
             f"Noisy Input\n(MSE: {noise_mse:.4f})", fontsize=14, fontweight="bold"
         )
@@ -128,7 +130,8 @@ try:
 
         # Panel 3: Denoised Output
         ax2 = fig.add_subplot(gs[0, 2])
-        ax2.imshow(denoised_image[0].squeeze(), cmap="gray")
+        # Transpose for correct display (EMNIST images are stored rotated)
+        ax2.imshow(denoised_image[0].squeeze().T, cmap="gray")
         ax2.set_title(
             f"Denoised Output\n(Predicted: '{predicted_char}', MSE: {mse:.4f})",
             fontsize=14,

@@ -1,0 +1,62 @@
+# Generated block images
+p5/blocks_8x8/
+
+# Python virtual environment
+.venv/
+venv/
+env/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Generated images and outputs
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.bmp
+*.tiff
+!img/*.jpg
+!img/*.png
+
+# Keras models
+*.keras
+*.h5
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Generated directories
+p*/blocks_*/

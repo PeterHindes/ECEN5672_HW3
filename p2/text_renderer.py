@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
+from matplotlib.widgets import RadioButtons, Slider, TextBox
 from tensorflow import keras
 
 print("Loading saved EMNIST label-only model...")
@@ -64,19 +65,16 @@ def generate_character_image(char, variant_values=None):
     return generated_image[0, :, :, 0]
 
 
-def render_text(
-    text, randomize_variants=True, uniform_variant=None, chars_per_row=None
-):
-    """
-    Render text as a sequence of generated character images
+# Global state
+current_text = "Hello World"
+current_variant_mode = "random"  # "random", "uniform", "equal"
+current_uniform_variant = 0
+random_variant_range = 0.5  # How much randomness (0.0 = all equal, 1.0 = full random)
 
-    Args:
-        text: String to render
-        randomize_variants: If True, use random variants for each character
-        uniform_variant: If provided (0-7), use this variant for all characters
-        chars_per_row: Number of characters per row (auto if None)
-    """
-    # Filter to only supported characters and convert to uppercase if needed
+
+def render_text_concatenated(text):
+    """Render text as a single concatenated horizontal image"""
+    # Filter to only supported characters
     chars = []
     for char in text:
         if char == " ":
@@ -87,176 +85,204 @@ def render_text(
             chars.append(char.upper())
 
     if not chars:
-        print("No valid characters to render!")
-        return
-
-    num_chars = len(chars)
-
-    # Determine grid layout
-    if chars_per_row is None:
-        chars_per_row = min(20, num_chars)  # Max 20 chars per row
-
-    num_rows = int(np.ceil(num_chars / chars_per_row))
-
-    print(f"Rendering text: '{text}'")
-    print(f"Valid characters: {num_chars}")
-    print(f"Layout: {num_rows} rows × {chars_per_row} chars/row")
-    print("Generating images...\n")
+        return np.ones((28, 280), dtype=np.float32)  # Blank image
 
     # Generate images for each character
     images = []
-    for i, char in enumerate(chars):
+    for char in chars:
         if char == " ":
             # Blank space
             images.append(np.zeros((28, 28), dtype=np.float32))
         else:
             # Determine variant
-            if uniform_variant is not None:
-                # Use specified uniform variant
+            if current_variant_mode == "uniform":
                 variant_values = np.zeros(8, dtype=np.float32)
-                variant_values[uniform_variant] = 1.0
-            elif randomize_variants:
-                # Random variant
-                variant_values = None
-            else:
-                # Equal distribution across all variants
+                variant_values[current_uniform_variant] = 1.0
+            elif current_variant_mode == "random":
+                # Controlled random: blend between equal and random based on slider
+                equal_dist = np.ones(8, dtype=np.float32) / 8.0
+                random_dist = np.random.dirichlet(np.ones(8)).astype(np.float32)
+                variant_values = (
+                    1 - random_variant_range
+                ) * equal_dist + random_variant_range * random_dist
+            else:  # equal
                 variant_values = np.ones(8, dtype=np.float32) / 8.0
 
             img = generate_character_image(char, variant_values)
-            images.append(img)
+            # Transpose each character image immediately for correct orientation
+            images.append(img.T)
 
-        print(f"Generated {i + 1}/{num_chars}: '{char}'                    ", end="\r")
+    # Concatenate images horizontally (each image is now 28x28 after transpose)
+    # Stack along width dimension (axis=1)
+    if images:
+        concatenated = np.concatenate(images, axis=1)
+    else:
+        concatenated = np.zeros((28, 28), dtype=np.float32)
 
-    print("\n\nCreating visualization...")
+    return concatenated
 
-    # Create figure
-    fig_width = min(chars_per_row * 1.2, 24)
-    fig_height = num_rows * 1.2
-    fig, axes = plt.subplots(num_rows, chars_per_row, figsize=(fig_width, fig_height))
 
-    # Handle single row/column case
-    if num_rows == 1 and chars_per_row == 1:
-        axes = np.array([[axes]])
-    elif num_rows == 1:
-        axes = axes.reshape(1, -1)
-    elif chars_per_row == 1:
-        axes = axes.reshape(-1, 1)
+def update_display():
+    """Update the displayed text rendering"""
+    print(f"Rendering: '{current_text}' with {current_variant_mode} variants...")
 
-    # Plot each character
-    for idx, (char, img) in enumerate(zip(chars, images)):
-        row = idx // chars_per_row
-        col = idx % chars_per_row
+    rendered_image = render_text_concatenated(current_text)
 
-        axes[row, col].imshow(img, cmap="gray")
-        axes[row, col].set_title(f"'{char}'", fontsize=10, fontweight="bold")
-        axes[row, col].axis("off")
-
-    # Hide unused subplots
-    for idx in range(num_chars, num_rows * chars_per_row):
-        row = idx // chars_per_row
-        col = idx % chars_per_row
-        axes[row, col].axis("off")
-
-    variant_info = (
-        f"Uniform Variant {uniform_variant}"
-        if uniform_variant is not None
-        else ("Random Variants" if randomize_variants else "Equal Variant Distribution")
-    )
-
-    plt.suptitle(
-        f'Rendered Text: "{text}"\n{variant_info}',
-        fontsize=16,
+    ax_image.clear()
+    # Images are already transposed during concatenation
+    ax_image.imshow(rendered_image, cmap="gray", interpolation="nearest")
+    ax_image.set_title(
+        f'Rendered Text: "{current_text}"\n'
+        f"Variant Mode: {current_variant_mode.capitalize()}"
+        + (
+            f" (variant {current_uniform_variant})"
+            if current_variant_mode == "uniform"
+            else ""
+        ),
+        fontsize=14,
         fontweight="bold",
     )
-    plt.tight_layout()
+    ax_image.axis("off")
 
-    return fig
+    plt.draw()
 
 
-# Interactive text rendering
-print("=" * 70)
-print("EMNIST Text Renderer")
-print("=" * 70)
-print("\nThis tool renders text using the EMNIST label-only autoencoder.")
-print("Each character is generated from its label + variant distribution.\n")
-print("Supported characters:")
-print("  - Digits: 0-9")
-print("  - Uppercase: A-Z")
-print("  - Lowercase: a-z")
-print("  - Spaces (rendered as blank)")
+def on_text_submit(text):
+    """Handle text input"""
+    global current_text
+    current_text = text
+    update_display()
+
+
+def on_variant_change(label):
+    """Handle variant mode selection"""
+    global current_variant_mode
+    if label == "Random Variants":
+        current_variant_mode = "random"
+    elif label == "Equal Distribution":
+        current_variant_mode = "equal"
+    update_display()
+
+
+def on_uniform_variant_change(label):
+    """Handle uniform variant selection"""
+    global current_variant_mode, current_uniform_variant
+    current_variant_mode = "uniform"
+    current_uniform_variant = int(label)
+    # Update radio button
+    radio_variant.set_active(2)  # Set to "Uniform Variant"
+    update_display()
+
+
+def on_slider_change(val):
+    """Handle random variant range slider change"""
+    global random_variant_range
+    random_variant_range = val
+    if current_variant_mode == "random":
+        update_display()
+
+
+# Create figure and layout
+fig = plt.figure(figsize=(16, 11))
+gs = fig.add_gridspec(5, 2, height_ratios=[0.5, 3, 1, 1, 0.5], hspace=0.4, wspace=0.3)
+
+# Title
+fig.text(
+    0.5,
+    0.95,
+    "Interactive EMNIST Text Renderer",
+    ha="center",
+    fontsize=18,
+    fontweight="bold",
+)
+
+# Text input box (top)
+ax_textbox = fig.add_subplot(gs[0, :])
+ax_textbox.axis("off")
+textbox_axes = plt.axes([0.15, 0.88, 0.7, 0.05])
+text_box = TextBox(
+    textbox_axes,
+    "Enter Text:",
+    initial=current_text,
+    color="lightgray",
+    hovercolor="lightblue",
+)
+text_box.on_submit(on_text_submit)
+
+# Image display (middle)
+ax_image = fig.add_subplot(gs[1, :])
+ax_image.set_title("Rendered Text", fontsize=14, fontweight="bold")
+ax_image.axis("off")
+
+# Variant mode radio buttons (bottom left)
+ax_radio_variant = fig.add_subplot(gs[2, 0])
+ax_radio_variant.set_title("Variant Mode", fontsize=12, fontweight="bold")
+radio_variant = RadioButtons(
+    ax_radio_variant,
+    labels=["Random Variants", "Equal Distribution", "Uniform Variant"],
+    active=0,
+)
+radio_variant.on_clicked(on_variant_change)
+
+# Uniform variant selector (bottom right)
+ax_radio_uniform = fig.add_subplot(gs[2, 1])
+ax_radio_uniform.set_title(
+    "Select Uniform Variant (0-7)", fontsize=12, fontweight="bold"
+)
+radio_uniform = RadioButtons(
+    ax_radio_uniform, labels=["0", "1", "2", "3", "4", "5", "6", "7"], active=0
+)
+radio_uniform.on_clicked(on_uniform_variant_change)
+
+# Random variant slider (bottom)
+ax_slider = fig.add_subplot(gs[3, :])
+ax_slider.set_title(
+    "Random Variant Range (for Random mode)", fontsize=12, fontweight="bold"
+)
+slider_axes = plt.axes([0.2, 0.18, 0.6, 0.03])
+variant_slider = Slider(
+    slider_axes,
+    "Randomness",
+    0.0,
+    1.0,
+    valinit=random_variant_range,
+    valstep=0.01,
+)
+variant_slider.on_changed(on_slider_change)
+ax_slider.axis("off")
+
+# Instructions (bottom)
+instructions_text = (
+    "Instructions:\n"
+    "• Type text in the box above and press Enter\n"
+    "• Choose variant mode: Random (controlled by slider below), Equal (average), or Uniform (same variant for all)\n"
+    "• Random Variant Range: 0.0 = no variation, 1.0 = full randomness per character\n"
+    "• If using Uniform, select which variant (0-7) on the right\n"
+    "• Supported: digits (0-9), uppercase (A-Z), lowercase (a-z), spaces"
+)
+
+fig.text(
+    0.5,
+    0.02,
+    instructions_text,
+    ha="center",
+    fontsize=9,
+    bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.3),
+)
+
+# Initial display
+update_display()
+
 print("\n" + "=" * 70)
+print("Interactive Text Renderer Ready!")
+print("=" * 70)
+print("\nInstructions:")
+print("  1. Type text in the text box at the top")
+print("  2. Press Enter to render")
+print("  3. Choose variant mode with radio buttons")
+print("  4. Adjust random variant slider (0.0 = consistent, 1.0 = varied)")
+print("  5. Characters are displayed side-by-side in a single image")
+print("\nClose the window to exit.")
+print("=" * 70)
 
-try:
-    while True:
-        print("\n")
-        text = input("Enter text to render (or 'quit' to exit): ").strip()
-
-        if text.lower() == "quit":
-            print("Exiting...")
-            break
-
-        if not text:
-            print("Please enter some text!")
-            continue
-
-        print("\nVariant options:")
-        print("  1. Random variants for each character")
-        print("  2. Uniform variant (0-7)")
-        print("  3. Equal distribution across all variants")
-
-        variant_choice = input("Choose option (1-3, default=1): ").strip()
-
-        randomize = True
-        uniform = None
-
-        if variant_choice == "2":
-            variant_num = input("Enter variant number (0-7): ").strip()
-            try:
-                uniform = int(variant_num)
-                if uniform < 0 or uniform > 7:
-                    print("Invalid variant, using random variants")
-                    uniform = None
-                else:
-                    randomize = False
-            except ValueError:
-                print("Invalid input, using random variants")
-        elif variant_choice == "3":
-            randomize = False
-
-        # Ask for custom layout
-        layout = input("Characters per row (default=auto, max=20): ").strip()
-        chars_per_row = None
-        if layout:
-            try:
-                chars_per_row = int(layout)
-                if chars_per_row < 1:
-                    chars_per_row = None
-            except ValueError:
-                print("Invalid input, using auto layout")
-
-        # Render the text
-        fig = render_text(
-            text,
-            randomize_variants=randomize,
-            uniform_variant=uniform,
-            chars_per_row=chars_per_row,
-        )
-
-        if fig:
-            # Save option
-            save = input("\nSave image? (y/n, default=n): ").strip().lower()
-            if save == "y":
-                filename = input("Filename (default=rendered_text.png): ").strip()
-                if not filename:
-                    filename = "rendered_text.png"
-                if not filename.endswith(".png"):
-                    filename += ".png"
-                fig.savefig(filename, dpi=150, bbox_inches="tight")
-                print(f"✓ Saved to: {filename}")
-
-            plt.show()
-
-except KeyboardInterrupt:
-    print("\n\nExiting...")
-
-print("\nGoodbye!")
+plt.show()
