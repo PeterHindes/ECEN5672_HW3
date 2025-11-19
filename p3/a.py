@@ -4,19 +4,16 @@ import matplotlib.image as mpimg
 import matplotlib.pyplot as plt
 import numpy as np
 from tensorflow_datasets.core.visualization import visualizer
+from tensorflow_datasets.image_classification.caltech import Caltech101
 
 # Open the image
 img = mpimg.imread("img/lena.png")
 height, width, channels = img.shape
-# Flatten pixels
-pixels = img.ravel()
 
-# If image is float in [0,1], convert to 0-255 integers; otherwise cast and clip
-if np.issubdtype(pixels.dtype, np.floating):
-    pixels = np.rint(pixels * 255).astype(np.int32)
-else:
-    pixels = pixels.astype(np.int32)
-pixels = np.clip(pixels, 0, 255)
+img_int = np.rint(img * 255).astype(np.uint8)
+# Flatten pixels
+pixels = img_int.ravel()
+
 
 plt.figure()
 ax = plt.gca()
@@ -265,7 +262,7 @@ def apply_huffman_encoding(data, root):
 
 
 encoded = apply_huffman_encoding(pixels, root)
-print(encoded)
+# print(encoded)
 
 
 def decode_huffman(encoded, root):
@@ -284,19 +281,126 @@ def decode_huffman(encoded, root):
 
 decoded = decode_huffman(encoded, root)
 # convert back to image
-image = np.array(decoded).reshape(height, width, channels)
-plt.imshow(image)
+restored_image = np.array(decoded).reshape(height, width, channels)
+plt.imshow(restored_image)
 plt.show()
 
 # save image
 plt.savefig("lena_huffman.png", bbox_inches="tight", dpi=150)
 
 # compute difference to verify it is the original image
-difference = np.sum(np.abs(image - img))
+difference = np.sum(np.abs(restored_image - img_int))
 print(f"Difference: {difference}")
 
 # display the difference image
-plt.imshow(np.abs(image - img))
+plt.imshow(np.abs(restored_image - img_int))
 plt.show()
 
-# def calculate_data_size
+def calculate_number_of_bits(
+    data, root=None, include_tree=False, tree_method="canonical"
+):
+    """
+    Calculates the number of bits for the given data.
+
+    For an image (numpy array), it's the uncompressed size.
+    For a string, it's the length (compressed size).
+    If include_tree is True, it adds the size of the Huffman tree.
+    """
+    if isinstance(data, np.ndarray):
+        # Uncompressed image size
+        return data.size * data.itemsize * 8
+    elif isinstance(data, str):
+        # Compressed data size
+        total_bits = len(data)
+        if include_tree:
+            if root is None:
+                raise ValueError("A tree 'root' must be provided to calculate its size.")
+
+            # Helper function to count nodes
+            def count_nodes(node):
+                if node is None:
+                    return 0, 0  # (internal, leaves)
+                if node.left is None and node.right is None:
+                    return 0, 1  # It's a leaf
+                
+                left_internal, left_leaves = count_nodes(node.left)
+                right_internal, right_leaves = count_nodes(node.right)
+                
+                # Count the current node as internal
+                return (1 + left_internal + right_internal, left_leaves + right_leaves)
+
+            internal_nodes, leaf_nodes = count_nodes(root)
+
+            if tree_method == "direct":
+                # 1 bit per node + 8 bits per leaf symbol
+                total_nodes = internal_nodes + leaf_nodes
+                tree_bits = total_nodes + (leaf_nodes * 8)
+                total_bits += tree_bits
+            elif tree_method == "canonical":
+                # Store the code length for each of the 256 possible symbols.
+                # We assume 5 bits are enough to store the length of any code.
+                total_bits += 256 * 5
+            else:
+                raise ValueError(f"Unknown tree_method: {tree_method}")
+        return total_bits
+    else:
+        raise TypeError(f"Unsupported data type: {type(data)}")
+
+
+print("Bits In Restored Image")
+print(calculate_number_of_bits(restored_image))
+print("")
+print("Bits In Huffman Encoded")
+print(calculate_number_of_bits(encoded, include_tree=True, tree_method="canonical", root=root))
+
+
+# Entropy
+# Entropy calculation with explanation
+# Entropy H = -sum(p_i * log2(p_i)) over all symbol probabilities p_i.
+# We treat each pixel channel value (0-255) as a symbol.
+
+# Get counts for each possible symbol (0..255)
+counts = np.bincount(pixels, minlength=256)
+total = counts.sum()
+if total == 0:
+    raise ValueError("No symbols to compute entropy from.")
+
+probs = counts / float(total)
+
+# Avoid log(0) by masking zero-probability symbols
+mask = probs > 0
+entropy = -np.sum(probs[mask] * np.log2(probs[mask]))
+
+# Print an explanation and some diagnostics
+print("Entropy explanation:")
+print(" - We compute the probability p_i of each pixel value (0..255).")
+print(" - Entropy is H = -sum_i p_i * log2(p_i), measured in bits per symbol.")
+print("")
+print(f"Total symbols (pixel channel samples): {total}")
+print(f"Distinct symbols with non-zero probability: {np.count_nonzero(mask)} / 256")
+print("Most frequent symbol(s):")
+# show top 5 most frequent symbols
+topk = 5
+top_indices = np.argsort(counts)[::-1][:topk]
+for idx in top_indices:
+    print(f"  Value {idx}: count={counts[idx]}, p={probs[idx]:.6f}")
+
+print("")
+print(f"Computed entropy: {entropy:.6f} bits/symbol")
+
+# Compare with Huffman result: average bits per symbol using our encoding
+if len(encoded) > 0:
+    avg_bits_huffman = len(encoded) / float(total)
+    redundancy = avg_bits_huffman - entropy
+    efficiency = (entropy / avg_bits_huffman) * 100.0 if avg_bits_huffman > 0 else 0.0
+
+    print("")
+    print("Huffman coding comparison:")
+    print(f" - Total bits in Huffman encoded stream (excluding tree info): {len(encoded)} bits")
+    print(f" - Average bits per symbol (Huffman): {avg_bits_huffman:.6f} bits/symbol")
+    print(f" - Redundancy (Huffman avg - entropy): {redundancy:.6f} bits/symbol")
+    print(f" - Coding efficiency (entropy / avg_huffman): {efficiency:.2f}%")
+else:
+    print("Encoded stream is empty; cannot compare Huffman average bits.")
+
+print(f"Entropy: {entropy:.2f} bits/symbol")
